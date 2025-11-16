@@ -20,6 +20,9 @@ on:
       - main
     tags:
       - "prod-*"
+    paths-ignore:
+      - "CHANGELOG.md"
+      - "changelogs/**"
 
 permissions:
   contents: read
