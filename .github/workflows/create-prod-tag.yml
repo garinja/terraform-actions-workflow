@@ -1,0 +1,111 @@
+name: Create Production Tag
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag_latest_main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # A PAT is needed when pushing tags in order to trigger terraform.yml workflow
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Determine next production tag
+        id: tag
+        run: |
+          git fetch origin main --depth=1
+          git fetch --tags origin
+          git checkout -B main origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TODAY="$(date -u +%Y%d%m)"
+          PREFIX="prod-${TODAY}-"
+
+          LAST_RUN="$(git tag --list "${PREFIX}*" | sed -E "s/${PREFIX}([0-9]+)/\1/" | sort -n | tail -n1)"
+          if [ -z "$LAST_RUN" ]; then
+            RUN_NUMBER=1
+          else
+            RUN_NUMBER=$((LAST_RUN + 1))
+          fi
+
+          TAG_NAME="${PREFIX}${RUN_NUMBER}"
+
+          if git show-ref --tags --verify --quiet "refs/tags/$TAG_NAME"; then
+            echo "Tag $TAG_NAME already exists."
+            exit 1
+          fi
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "run_number=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Update CHANGELOG.md from fragments
+        env:
+          VERSION: ${{ steps.tag.outputs.tag_name }}
+        run: |
+          changelog_file="CHANGELOG.md"
+          version="$VERSION"
+          today=$(date +'%Y-%m-%d')
+
+          new_entry_file=$(mktemp)
+
+          {
+            echo "## [$version] - $today"
+            echo ""
+
+            categories=("Added" "Changed" "Deprecated" "Removed" "Fixed" "Security")
+            for cat in "${categories[@]}"; do
+              entries=""
+              if [ -d "changelogs" ]; then
+                for f in changelogs/*.md; do
+                  [ -f "$f" ] || continue
+                  fragment=$(awk "/### $cat/{flag=1; next} /^### /{flag=0} flag" "$f")
+                  if [ -n "$fragment" ]; then
+                    entries+="$fragment"$'\n'
+                  fi
+                done
+              fi
+
+              if [ -n "$entries" ]; then
+                echo "### $cat"
+                echo ""
+                echo "$entries"
+                echo ""
+              fi
+            done
+            echo ""
+          } > "$new_entry_file"
+
+          if [ -f "$changelog_file" ]; then
+            cat "$changelog_file" >> "$new_entry_file"
+          fi
+          mv "$new_entry_file" "$changelog_file"
+
+          if [ -d "changelogs" ]; then
+            rm -f changelogs/*.md || true
+          fi
+
+      - name: Commit updated CHANGELOG
+        env:
+          VERSION: ${{ steps.tag.outputs.tag_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if [ -d "changelogs" ]; then
+            git add changelogs/
+          fi
+          git commit -m "chore: update CHANGELOG for $VERSION"
+          git push origin HEAD
+
+      - name: Tag latest main commit
+        run: |
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"

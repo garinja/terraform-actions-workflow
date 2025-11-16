@@ -1,0 +1,39 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require_fragment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure new changelog fragment exists
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+
+          if [ ! -d changelogs ]; then
+            echo "No changelogs directory found. Please add a changelog fragment under changelogs/."
+            exit 1
+          fi
+
+          ADDED=$(git diff --name-only --diff-filter=A "origin/$BASE_REF"...HEAD -- 'changelogs/*.md')
+
+          if [ -z "$ADDED" ]; then
+            echo "No new changelog fragment found in changelogs/*.md. Please add one for this PR."
+            exit 1
+          fi
+
+          echo "Found new changelog fragment(s):"
+          git diff --name-only --diff-filter=A "origin/$BASE_REF"...HEAD -- 'changelogs/*.md'
