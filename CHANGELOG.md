@@ -1,3 +1,16 @@
+## [prod-20251611-3] - 2025-11-16
+
+### Added
+
+- Added a second pet resource
+
+
+### Changed
+
+- Changed Terraform Deploy PR title for Test
+
+
+
 ## [prod-20251611-2] - 2025-11-16
 
 ### Changed
