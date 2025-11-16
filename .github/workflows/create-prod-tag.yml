@@ -10,11 +10,17 @@ jobs:
   tag_latest_main:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TAG_APP_ID }}
+          private-key: ${{ secrets.TAG_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # A PAT is needed when pushing tags in order to trigger terraform.yml workflow
-          token: ${{ secrets.PAT_TOKEN }}
+          token: ${{ steps.app_token.outputs.token }}
 
       - name: Determine next production tag
         id: tag
@@ -22,8 +28,8 @@ jobs:
           git fetch origin main --depth=1
           git fetch --tags origin
           git checkout -B main origin/main
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "terraform-release-bot[bot]"
+          git config user.email "terraform-release-bot[bot]@users.noreply.github.com"
 
           TODAY="$(date -u +%Y%d%m)"
           PREFIX="prod-${TODAY}-"
@@ -95,8 +101,8 @@ jobs:
         env:
           VERSION: ${{ steps.tag.outputs.tag_name }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "terraform-release-bot[bot]"
+          git config user.email "terraform-release-bot[bot]@users.noreply.github.com"
           git add CHANGELOG.md
           if [ -d "changelogs" ]; then
             git add changelogs/
